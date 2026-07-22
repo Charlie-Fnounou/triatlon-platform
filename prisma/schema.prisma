@@ -1,0 +1,176 @@
+// Esquema de base de datos del MVP de triatlón/resistencia.
+// Motor: PostgreSQL (Supabase). ORM: Prisma 6 (NO subir a Prisma 7: mueve el
+// datasource a prisma.config.ts y rompe el flujo estándar url/directUrl —
+// ver lección equivalente en el proyecto World Runner).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Disciplina {
+  NATACION
+  CICLISMO
+  RUNNING
+  FUERZA
+  OTRO
+}
+
+enum TipoUmbral {
+  FTP_CICLISMO
+  PACE_UMBRAL_RUNNING
+  PACE_UMBRAL_NATACION
+  FC_MAX
+  FC_REPOSO
+}
+
+enum DistanciaObjetivo {
+  SUPER_SPRINT
+  SPRINT
+  OLIMPICO
+  MEDIO_IRONMAN
+  IRONMAN
+  ULTRAMAN
+  PERSONALIZADO
+}
+
+enum TipoSesion {
+  RODAJE
+  SERIES
+  LARGO
+  RECUPERACION
+  FUERZA
+  DESCANSO
+  BRICK
+}
+
+enum FuenteRegistro {
+  MANUAL
+  IA_FOTO
+  CODIGO_BARRAS
+}
+
+enum RolMensaje {
+  USUARIO
+  IA
+}
+
+model Usuario {
+  id               String   @id @default(uuid())
+  email            String   @unique
+  nombre           String
+  fechaNacimiento  DateTime?
+  sexo             String?
+  pesoKg           Float?
+  alturaCm         Float?
+  nivel            String?
+  esAdmin          Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  umbrales           Umbral[]
+  actividades        Actividad[]
+  planesEntrenamiento PlanEntrenamiento[]
+  registrosComida    RegistroComida[]
+  mensajesIA         MensajeIA[]
+}
+
+// Historial de umbrales con vigencia temporal: el TSS de cada actividad se
+// calcula con el umbral válido en su fecha, nunca con el actual.
+model Umbral {
+  id          String     @id @default(uuid())
+  usuarioId   String
+  usuario     Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  tipo        TipoUmbral
+  valor       Float
+  vigenteDesde DateTime
+  createdAt   DateTime   @default(now())
+
+  @@index([usuarioId, tipo, vigenteDesde])
+}
+
+model Actividad {
+  id                    String     @id @default(uuid())
+  usuarioId             String
+  usuario               Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  disciplina            Disciplina
+  fecha                 DateTime
+  duracionSeg           Int
+  distanciaM            Float?
+  calorias              Int?
+  fcPromedio            Int?
+  fcMax                 Int?
+  potenciaPromedioW     Int?
+  ritmoPromedioSegPorKm Int?
+  tss                   Float?
+  notas                 String?
+  createdAt             DateTime   @default(now())
+
+  sesionPlan SesionPlan?
+
+  @@index([usuarioId, fecha])
+}
+
+model PlanEntrenamiento {
+  id                String            @id @default(uuid())
+  usuarioId         String
+  usuario           Usuario           @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  nombre            String
+  distanciaObjetivo DistanciaObjetivo
+  fechaCarrera      DateTime
+  nivel             String?
+  activo            Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+
+  sesiones SesionPlan[]
+
+  @@index([usuarioId, activo])
+}
+
+model SesionPlan {
+  id                  String     @id @default(uuid())
+  planId              String
+  plan                PlanEntrenamiento @relation(fields: [planId], references: [id], onDelete: Cascade)
+  fecha               DateTime
+  disciplina          Disciplina
+  tipo                TipoSesion
+  descripcion         String
+  duracionObjetivoSeg Int?
+  distanciaObjetivoM  Float?
+  completada          Boolean    @default(false)
+  actividadId         String?    @unique
+  actividad           Actividad? @relation(fields: [actividadId], references: [id])
+
+  @@index([planId, fecha])
+}
+
+model RegistroComida {
+  id              String         @id @default(uuid())
+  usuarioId       String
+  usuario         Usuario        @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  fecha           DateTime
+  descripcion     String
+  calorias        Int?
+  proteinasG      Float?
+  carbohidratosG  Float?
+  grasasG         Float?
+  fuente          FuenteRegistro @default(MANUAL)
+  createdAt       DateTime       @default(now())
+
+  @@index([usuarioId, fecha])
+}
+
+model MensajeIA {
+  id        String     @id @default(uuid())
+  usuarioId String
+  usuario   Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  rol       RolMensaje
+  contenido String
+  createdAt DateTime   @default(now())
+
+  @@index([usuarioId, createdAt])
+}
